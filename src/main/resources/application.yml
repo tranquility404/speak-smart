@@ -1,0 +1,75 @@
+spring:
+  application:
+    name: SpeakSmart
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+#  main:
+#    allow-circular-references: true
+  security:
+    oauth2:
+      client:
+        registration:
+          speaksmart:
+            jwt-secret: ${JWT_SECRET}
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            redirect-uri: ${GOOGLE_REDIRECT_URI}
+          github:
+            client-id: ${GITHUB_CLIENT_ID}
+            client-secret: ${GITHUB_CLIENT_SECRET}
+            redirect-uri: ${GITHUB_REDIRECT_URI}
+          linkedin:
+            client-id: ${LINKEDIN_CLIENT_ID}
+            client-secret: ${LINKEDIN_CLIENT_SECRET}
+            redirect-uri: ${LINKEDIN_REDIRECT_URI}
+            scope: openid,profile,email
+            provider: linkedin
+            authorization-grant-type: authorization_code
+
+        provider:
+          linkedin:
+            authorization-uri: https://www.linkedin.com/oauth/v2/authorization
+            token-uri: https://www.linkedin.com/oauth/v2/accessToken
+            user-info-uri: https://api.linkedin.com/v2/userinfo
+            user-name-attribute: email
+
+  data:
+    mongodb:
+      uri: ${MONGODB_URI}
+      database: ${MONGODB_NAME}
+
+  servlet:
+    multipart:
+      max-file-size: 40MB
+      max-request-size: 40MB
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+  endpoint:
+    prometheus:
+      enabled: true
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: speak-smart
+    export:
+      prometheus:
+        enabled: true
+
+
+cors:
+  allowed-origins: ${ALLOWED_ORIGINS}
+groq:
+  api:
+    key: ${GROQ_API_KEY}
+
+# Cloudinary Configuration
+cloudinary:
+  cloud-name: ${CLOUDINARY_CLOUD_NAME}
+  api-key: ${CLOUDINARY_API_KEY}
+  api-secret: ${CLOUDINARY_API_SECRET}
