@@ -19,21 +19,21 @@ import java.util.Map;
 public class AIService {
 
     @Value("${groq.api.key}")
-    private String apiKey;
+    public String apiKey;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
     // ------------------- Transcription -------------------
-    public Map<String, Object> transcribe(MultipartFile file) throws Exception {
+    public Map<String, Object> transcribe(byte[] fileBytes, String fileName) throws Exception {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
         headers.setBearerAuth(apiKey);
 
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-        body.add("file", new ByteArrayResource(file.getBytes()) {
+        body.add("file", new ByteArrayResource(fileBytes) {
             @Override
             public String getFilename() {
-                return file.getOriginalFilename();
+                return fileName;
             }
         });
         body.add("model", "whisper-large-v3");

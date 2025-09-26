@@ -76,7 +76,7 @@ public class ChartGenerationService {
     /**
      * Generate and upload intonation chart
      */
-    public String generateIntonationChart(AnalysisResult.IntonationAnalysis intonation, List<SpeechAnalysisService.TimeValuePair> pitchTimeSeries) {
+    public XYChart generateIntonationChart(AnalysisResult.IntonationAnalysis intonation, List<SpeechAnalysisService.TimeValuePair> pitchTimeSeries) {
         try {
             if (pitchTimeSeries == null || pitchTimeSeries.isEmpty()) {
                 log.warn("No data available for intonation chart generation");
@@ -114,7 +114,7 @@ public class ChartGenerationService {
             avgSeries.setMarkerColor(Color.ORANGE);
             avgSeries.setLineColor(Color.ORANGE);
 
-            return uploadChartToCloudinary(chart, "intonation_chart_" + System.currentTimeMillis());
+            return chart;
 
         } catch (Exception e) {
             log.error("Error generating intonation chart", e);
@@ -166,18 +166,15 @@ public class ChartGenerationService {
     /**
      * Upload chart to Cloudinary and return URL
      */
-    private String uploadChartToCloudinary(XYChart chart, String filename) {
+    public String uploadChartToCloudinary(XYChart chart, String filename) {
         try {
             // Convert chart to bytes
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
             BitmapEncoder.saveBitmap(chart, outputStream, BitmapEncoder.BitmapFormat.PNG);
             byte[] chartBytes = outputStream.toByteArray();
 
-            // Create a MultipartFile from bytes
-            MultipartFile chartFile = createMultipartFile(chartBytes, filename + ".png", "image/png");
-
             // Upload to Cloudinary
-            var uploadResult = cloudinaryService.uploadFile(chartFile, "charts");
+            var uploadResult = cloudinaryService.uploadFile(chartBytes, filename + ".png", "image/png", "charts");
             return (String) uploadResult.get("secure_url");
 
         } catch (Exception e) {

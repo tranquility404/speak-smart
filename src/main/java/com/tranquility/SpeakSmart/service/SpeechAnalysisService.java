@@ -1,29 +1,33 @@
 package com.tranquility.SpeakSmart.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.tranquility.SpeakSmart.model.AnalysisResult;
-import com.tranquility.SpeakSmart.model.AnalysisRequest;
-import com.tranquility.SpeakSmart.model.VocabAnalysis;
-import com.tranquility.SpeakSmart.util.LlmUtils;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
-
 import be.tarsos.dsp.AudioDispatcher;
 import be.tarsos.dsp.AudioEvent;
 import be.tarsos.dsp.AudioProcessor;
 import be.tarsos.dsp.io.jvm.AudioDispatcherFactory;
 import be.tarsos.dsp.pitch.PitchProcessor;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.tranquility.SpeakSmart.model.AnalysisRequest;
+import com.tranquility.SpeakSmart.model.AnalysisResult;
+import com.tranquility.SpeakSmart.model.VocabAnalysis;
+import com.tranquility.SpeakSmart.util.LlmUtils;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
+import org.knowm.xchart.XYChart;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.UnsupportedAudioFileException;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 @Slf4j
@@ -39,6 +43,96 @@ public class SpeechAnalysisService {
     private static final int SAMPLE_RATE = 44100;
     private static final int BUFFER_SIZE = 1024;
     private static final int OVERLAP = 512;
+
+    /*public static void main(String[] args) throws Exception {
+        String fileName = "aman.wav";
+        String filePath = System.getProperty("user.dir") + "/audio/" + fileName;
+        File file = new File(filePath);
+        byte[] audioBytes = Files.readAllBytes(file.toPath());
+
+        File inputTempFile = File.createTempFile("upload-", ".tmp");
+        try (FileOutputStream fos = new FileOutputStream(inputTempFile)) {
+            fos.write(audioBytes);
+        }
+
+        File outputFile = File.createTempFile("converted-", ".wav");
+        String[] command = {"ffmpeg", "-y", "-i", inputTempFile.getAbsolutePath(), "-ar", "44100", "-ac", "1",
+                outputFile.getAbsolutePath()
+        };
+
+        Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            throw new RuntimeException("Audio conversion failed, exit code: " + exitCode);
+        }
+
+        byte[] fileBytes = Files.readAllBytes(outputFile.getAbsoluteFile().toPath());
+        inputTempFile.delete();
+        outputFile.delete();
+
+        SpeechAnalysisService ob = new SpeechAnalysisService();
+
+        AnalysisResult result = new AnalysisResult();
+        AudioData audioData = ob.loadAudioData(fileBytes);
+        result.setAudioMetadata(ob.createAudioMetadata(audioData, "audio/wav", 1000L));
+
+//        AIService aiService1 = new AIService();
+//
+//        Map<String, Object> transcriptionResponse = aiService1.transcribe(fileBytes, file.getName());
+//        ob.parseTranscriptionAndComputeSpeechRate(transcriptionResponse, result);
+
+        AudioAnalysisResults analysisResults = ob.performSinglePassAnalysis(audioData);
+        result.setIntonation(ob.calculateIntonationAnalysis(analysisResults.getPitchTimeSeries(), analysisResults.getPitchValues(), audioData.getDuration()));
+
+        ob.analyzeEnergyAndPauses(analysisResults.getEnergyTimeSeries(), result);
+
+//        result.setOverallScore(ob.calculateOverallScore(
+//                result.getSpeechRate().getScore(),
+//                result.getIntonation().getScore(),
+//                result.getEnergy().getScore(),
+//                result.getPauses().getScore()
+//        ));
+
+//        AnalysisResult.SpeechRateAnalysis speechRate = result.getSpeechRate();
+//        System.out.println("\nSpeech Rate:-");
+//        System.out.println("Avg: " + speechRate.getAvgSpeechRate());
+//        System.out.println("Category: " + speechRate.getCategory());
+//        System.out.println("Score: " + speechRate.getScore());
+//        System.out.println("Fastest: " + speechRate.getMaxWpm() + "\t Slowest: " + speechRate.getMinWpm());
+//        System.out.println("Feedback: " + speechRate.getFeedback());
+
+        AnalysisResult.IntonationAnalysis intonation = result.getIntonation();
+        System.out.println("\nIntonation:-");
+        System.out.println("Avg: " + intonation.getAveragePitch());
+        System.out.println("Category: " + intonation.getCategory());
+        System.out.println("Score: " + intonation.getScore());
+        System.out.println("Feedback: " + intonation.getFeedback());
+
+        JFrame frame = new JFrame("XY Chart");
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        ChartGenerationService chartGenerationService1 = new ChartGenerationService();
+        XYChart chart = chartGenerationService1.generateIntonationChart(intonation, analysisResults.getPitchTimeSeries());
+        frame.add(new XChartPanel<>(chart));
+        frame.pack();
+        frame.setVisible(true);
+
+        AnalysisResult.EnergyAnalysis energy = result.getEnergy();
+        System.out.println("\nEnergy:-");
+        System.out.println("Avg: " + energy.getAverageEnergy());
+        System.out.println("Category: " + energy.getCategory());
+        System.out.println("Score: " + energy.getScore());
+        System.out.println("Feedback: " + energy.getFeedback());
+
+        AnalysisResult.PauseAnalysis confidence = result.getPauses();
+        System.out.println("\nConfidence:-");
+        System.out.println("Avg Pause Duration: " + confidence.getAveragePauseDuration());
+        System.out.println("Category: " + confidence.getCategory());
+        System.out.println("Score: " + confidence.getScore());
+        System.out.println("No of pauses: " + confidence.getTotalPauses() + "\t Longest Pause: " + confidence.getLongestPause());
+        System.out.println("Feedback: " + confidence.getFeedback());
+
+//        System.out.println("\nOverall Score: " + result.getOverallScore());
+    }*/
 
     /**
      * Comprehensive single-pass audio analysis Processes audio once and
@@ -57,12 +151,12 @@ public class SpeechAnalysisService {
         try {
             // Step 1: Load and validate audio
             long audioLoadStart = System.currentTimeMillis();
-            AudioData audioData = loadAudioData(audioFile);
+            AudioData audioData = loadAudioData(audioFile.getBytes());
             long audioLoadTime = System.currentTimeMillis() - audioLoadStart;
 
             // Step 2: Get transcription (parallel to audio processing)
             long transcriptionStart = System.currentTimeMillis();
-            Map<String, Object> transcriptionResponse = aiService.transcribe(audioFile);
+            Map<String, Object> transcriptionResponse = aiService.transcribe(audioFile.getBytes(), audioFile.getOriginalFilename());
             parseTranscriptionAndComputeSpeechRate(transcriptionResponse, result);
 
             long transcriptionTime = System.currentTimeMillis() - transcriptionStart;
@@ -73,7 +167,7 @@ public class SpeechAnalysisService {
             long analysisTime = System.currentTimeMillis() - analysisStart;
 
             // Step 4: Calculate comprehensive metrics
-            result.setAudioMetadata(createAudioMetadata(audioData, audioFile));
+            result.setAudioMetadata(createAudioMetadata(audioData, audioFile.getContentType(), audioFile.getSize()));
             result.setIntonation(calculateIntonationAnalysis(analysisResults.getPitchTimeSeries(), analysisResults.getPitchValues(), audioData.getDuration()));
             analyzeEnergyAndPauses(analysisResults.getEnergyTimeSeries(), result);
 
@@ -126,14 +220,18 @@ public class SpeechAnalysisService {
     /**
      * Optimized audio data loading with proper resource management
      */
-    private AudioData loadAudioData(MultipartFile file) throws IOException, UnsupportedAudioFileException {
-        try (AudioInputStream inputStream = AudioSystem.getAudioInputStream(file.getInputStream())) {
-            AudioData audioData = new AudioData();
-            audioData.setSampleRate(SAMPLE_RATE);
+    private AudioData loadAudioData(byte[] audioBytes) {
+        AudioData audioData = new AudioData();
+        try (ByteArrayInputStream bais = new ByteArrayInputStream(audioBytes);
+             AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(bais)) {
+            long frames = audioInputStream.getFrameLength();
+            float frameRate = audioInputStream.getFormat().getFrameRate();
+
+            double durationSeconds = (double) frames / frameRate;
+            audioData.setSampleRate((int) audioInputStream.getFormat().getSampleRate());
 
             // Convert to mono if needed and normalize sample rate
             List<Float> samples = new ArrayList<>();
-            byte[] audioBytes = file.getBytes();
 
             // Simple 16-bit PCM conversion (can be enhanced based on actual audio format)
             for (int i = 0; i < audioBytes.length - 1; i += 2) {
@@ -142,10 +240,11 @@ public class SpeechAnalysisService {
             }
 
             audioData.setSamples(samples.stream().mapToDouble(Float::doubleValue).toArray());
-            audioData.setDuration(audioData.getSamples().length / (double) SAMPLE_RATE);
-
-            return audioData;
+            audioData.setDuration(durationSeconds);
+        } catch (IOException|UnsupportedAudioFileException e) {
+            log.error("Error occurred while loading audio: %s".formatted(e.getMessage()));
         }
+        return audioData;
     }
 
     /**
@@ -212,7 +311,7 @@ public class SpeechAnalysisService {
         dispatcher.run();
 
         // Convert queues to arrays for analysis
-        results.setPitchValues(pitchValues.stream().mapToDouble(Double::doubleValue).toArray());
+        results.setPitchValues(pitchValues.stream().filter(p -> !Double.isNaN(p) && p > 0).mapToDouble(Double::doubleValue).toArray());
         results.setEnergyValues(energyValues.stream().mapToDouble(Double::doubleValue).toArray());
         results.setPitchTimeSeries(new ArrayList<>(pitchTimeSeries));
         results.setEnergyTimeSeries(new ArrayList<>(energyTimeSeries));
@@ -338,9 +437,9 @@ public class SpeechAnalysisService {
         analysis.setPitchVariation(pitchVariation);
 
         // Score & feedback
-        analysis.setPitchVariationScore(calculatePitchVariationScore(analysis, pitchValues, duration));
+        analysis.setPitchVariationScore(calculatePitchVariationScore(pitchValues, analysis.getAveragePitch(), stdDev));
         analysis.setCategory(calculateIntonationCategory(analysis.getPitchVariationScore()));
-        analysis.setScore(calculateIntonationScore(analysis.getPitchVariationScore()));
+        analysis.setScore(analysis.getPitchVariationScore());
         analysis.setFeedback(generateIntonationFeedback(analysis.getPitchVariationScore()));
         return analysis;
     }
@@ -423,7 +522,7 @@ public class SpeechAnalysisService {
             pauseAnalysis.setAveragePauseDuration(totalPauseDuration / totalPauses);
             pauseAnalysis.setLongestPause(longestPause);
         }
-        double pauseRate = totalPauses / totalPauseDuration;
+        double pauseRate = totalPauses / result.getAudioMetadata().getDurationSeconds();
         pauseAnalysis.setCategory(calculatePauseCategory(pauseRate));
         pauseAnalysis.setScore(calculatePauseScore(pauseRate));
         pauseAnalysis.setFeedback(generatePauseFeedback(pauseRate));
@@ -463,26 +562,20 @@ public class SpeechAnalysisService {
         };
     }
 
-    public double calculatePitchVariationScore(AnalysisResult.IntonationAnalysis analysis, double[] pitch, double duration) {
-        double mean = analysis.getAveragePitch();
+    public static double calculatePitchVariationScore(double[] valid, double mean, double stdDev) {
+        if (valid.length == 0) return 0.0; // no voiced frames
 
-        if (pitch.length < 2 || duration <= 0) return 0;
+        double zScore = (stdDev - 40) / 40; // Z-score vs average expressive speakers
+        double score;
+        if (stdDev < 20)
+            score = stdDev / 20 * 0.5;  // too monotone → penalize heavily   // max 0.5
+        else if (stdDev > 80)
+            score = 80 / stdDev * 0.5; // too erratic → penalize // drops towards 0
+        else
+            score = 1.0 / (1.0 + Math.abs(zScore)); // good variation → scale around z-score
 
-        int crossings = 0;
-        for (int i = 0; i < pitch.length - 1; i++) {
-            if ((pitch[i] - mean) * (pitch[i + 1] - mean) < 0) {
-                crossings++;
-            }
-        }
-
-        double crossingRate = crossings / duration; // crossings per second
-
-        double score = ((analysis.getMaxPitch() - analysis.getMinPitch()) * 0.5)
-                + (crossingRate * 0.5);
-
-        return score;
+        return Math.max(0.0, Math.min(1.0, score)) * 100;   // clamp 0–1
     }
-
 
     private String calculateIntonationCategory(double score) {
         if (score > 50) return "high";
@@ -560,37 +653,11 @@ public class SpeechAnalysisService {
     }
 
 
-    // Additional helper classes and methods
+    @Data
     private static class AudioData {
-
         private double[] samples;
         private int sampleRate;
         private double duration;
-
-        // getters and setters
-        public double[] getSamples() {
-            return samples;
-        }
-
-        public void setSamples(double[] samples) {
-            this.samples = samples;
-        }
-
-        public int getSampleRate() {
-            return sampleRate;
-        }
-
-        public void setSampleRate(int sampleRate) {
-            this.sampleRate = sampleRate;
-        }
-
-        public double getDuration() {
-            return duration;
-        }
-
-        public void setDuration(double duration) {
-            this.duration = duration;
-        }
     }
 
     @Data
@@ -608,11 +675,6 @@ public class SpeechAnalysisService {
         private double value;
     }
 
-    private Map<String, Object> getAIInsights(String transcription) {
-        // Implementation to get AI analysis
-        return new HashMap<>();
-    }
-
     private float[] floatArrayFromDouble(double[] doubleArray) {
         float[] floatArray = new float[doubleArray.length];
         for (int i = 0; i < doubleArray.length; i++) {
@@ -627,12 +689,12 @@ public class SpeechAnalysisService {
     }
 
     // Placeholder methods that would need full implementation
-    private AnalysisResult.AudioMetadata createAudioMetadata(AudioData audioData, MultipartFile file) {
+    private AnalysisResult.AudioMetadata createAudioMetadata(AudioData audioData, String contentType, long size) {
         AnalysisResult.AudioMetadata metadata = new AnalysisResult.AudioMetadata();
         metadata.setDurationSeconds(audioData.getDuration());
         metadata.setSampleRate(audioData.getSampleRate());
-        metadata.setFormat(file.getContentType());
-        metadata.setFileSizeBytes(file.getSize());
+        metadata.setFormat(contentType);
+        metadata.setFileSizeBytes(size);
         metadata.setChannels(1); // Assuming mono after processing
         return metadata;
     }
@@ -662,7 +724,8 @@ public class SpeechAnalysisService {
 
             // Generate intonation chart
             if (result.getIntonation() != null) {
-                String intonationChartUrl = chartGenerationService.generateIntonationChart(result.getIntonation(), audioAnalysisResults.pitchTimeSeries);
+                XYChart chart = chartGenerationService.generateIntonationChart(result.getIntonation(), audioAnalysisResults.pitchTimeSeries);
+                String intonationChartUrl = chartGenerationService.uploadChartToCloudinary(chart, "intonation_chart_" + System.currentTimeMillis());
                 result.getIntonation().setChartUrl(intonationChartUrl);
                 log.debug("Intonation chart generated: {}", intonationChartUrl);
             }

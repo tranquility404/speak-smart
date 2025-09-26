@@ -34,7 +34,7 @@ public class FileUploadController {
             }
 
             // Upload to Cloudinary
-            Map<String, Object> result = cloudinaryService.uploadAudio(file);
+            Map<String, Object> result = cloudinaryService.uploadAudio(file.getBytes(), contentType);
 
             // Return essential information
             Map<String, Object> response = new HashMap<>();
@@ -69,7 +69,7 @@ public class FileUploadController {
             }
 
             // Upload to Cloudinary
-            Map<String, Object> result = cloudinaryService.uploadImage(file);
+            Map<String, Object> result = cloudinaryService.uploadImage(file, contentType);
 
             // Return essential information
             Map<String, Object> response = new HashMap<>();

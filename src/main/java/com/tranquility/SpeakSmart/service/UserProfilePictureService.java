@@ -28,7 +28,7 @@ public class UserProfilePictureService {
         // Create a folder structure like "profiles/user_123/"
         String folder = "profiles/user_" + userId;
 
-        Map<String, Object> uploadResult = cloudinaryService.uploadFile(profilePicture, folder);
+        Map<String, Object> uploadResult = cloudinaryService.uploadFile(profilePicture.getBytes(), profilePicture.getContentType(), folder);
         return (String) uploadResult.get("secure_url");
     }
 

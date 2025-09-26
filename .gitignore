@@ -4,6 +4,7 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+audio/
 .env
 src/main/resources/application-local.yml
 start.bat

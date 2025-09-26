@@ -1,6 +1,40 @@
 package com.tranquility.SpeakSmart.controller;
 
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.UnsupportedAudioFileException;
+
+import com.tranquility.SpeakSmart.model.ValidationResult;
+import com.tranquility.SpeakSmart.util.AudioUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tranquility.SpeakSmart.model.AnalysisRequest;
 import com.tranquility.SpeakSmart.repository.AnalysisRequestRepository;
 import com.tranquility.SpeakSmart.service.AIService;
@@ -8,25 +42,9 @@ import com.tranquility.SpeakSmart.service.AsyncAudioProcessingService;
 import com.tranquility.SpeakSmart.service.CloudinaryService;
 import com.tranquility.SpeakSmart.service.UserService;
 import com.tranquility.SpeakSmart.util.LlmUtils;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
-import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.UnsupportedAudioFileException;
-import java.io.BufferedInputStream;
-import java.io.IOException;
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @RestController
@@ -48,6 +66,9 @@ public class AIController {
     @Autowired
     private AsyncAudioProcessingService asyncProcessingService;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
     /**
      * Optimized audio upload endpoint 1. Validates and uploads audio to
      * Cloudinary immediately 2. Creates analysis request in DB with PENDING
@@ -66,7 +87,7 @@ public class AIController {
 
             // Validate audio file
             log.info("Starting audio file validation...");
-            ValidationResult validation = validateAudioFile(file);
+            ValidationResult validation = AudioUtils.validateAudioFile(file);
             if (!validation.isValid()) {
                 log.error("Audio file validation failed: {}", validation.getErrorMessage());
                 return ResponseEntity.badRequest().body(Map.of("error", validation.getErrorMessage()));
@@ -77,7 +98,7 @@ public class AIController {
             // Upload to Cloudinary immediately
             log.info("Starting Cloudinary upload...");
             long uploadStart = System.currentTimeMillis();
-            Map<String, Object> uploadResult = cloudinaryService.uploadAudio(file);
+            Map<String, Object> uploadResult = cloudinaryService.uploadAudio(validation.getAudioFile(), file.getContentType());
             long uploadTime = System.currentTimeMillis() - uploadStart;
             log.info("Cloudinary upload completed in {} ms", uploadTime);
 
@@ -162,10 +183,12 @@ public class AIController {
                     Map<String, Object> quickResults = request.getQuickResults();
                     if (quickResults != null) {
                         Map<String, String> chartUrls = new HashMap<>();
-                        if (quickResults.containsKey("speech_rate_chart_url"))
+                        if (quickResults.containsKey("speech_rate_chart_url")) {
                             chartUrls.put("speech_rate", (String) quickResults.get("speech_rate_chart_url"));
-                        if (quickResults.containsKey("intonation_chart_url"))
+                        }
+                        if (quickResults.containsKey("intonation_chart_url")) {
                             chartUrls.put("intonation", (String) quickResults.get("intonation_chart_url"));
+                        }
                         response.put("chart_urls", chartUrls);
                     }
                     break;
@@ -265,125 +288,6 @@ public class AIController {
         }
     }
 
-    // Helper methods
-    private ValidationResult validateAudioFile(MultipartFile file) {
-        ValidationResult result = new ValidationResult();
-
-        log.info("Starting audio file validation for file: {}", file.getOriginalFilename());
-
-        try {
-            // Log file basic information
-            log.info("File details - Name: {}, Size: {} bytes, ContentType: {}",
-                    file.getOriginalFilename(), file.getSize(), file.getContentType());
-
-            // Check if file is empty
-            if (file.isEmpty()) {
-                log.error("File validation failed: File is empty - {}", file.getOriginalFilename());
-                result.setValid(false);
-                result.setErrorMessage("Audio file is empty. Please select a valid audio file.");
-                return result;
-            }
-
-            // Check file size (max 50MB)
-            long maxSize = 50 * 1024 * 1024;
-            if (file.getSize() > maxSize) {
-                log.error("File validation failed: File too large - {} bytes (max: {} bytes)",
-                        file.getSize(), maxSize);
-                result.setValid(false);
-                result.setErrorMessage("Audio file too large. Maximum size is 50MB.");
-                return result;
-            }
-            log.info("File size validation passed: {} bytes", file.getSize());
-
-            // Check content type
-            String contentType = file.getContentType();
-            if (contentType == null) {
-                log.error("File validation failed: Content type is null for file - {}", file.getOriginalFilename());
-                result.setValid(false);
-                result.setErrorMessage("Unable to determine file type. Please ensure you're uploading an audio file.");
-                return result;
-            }
-
-            if (!contentType.startsWith("audio/")) {
-                log.error("File validation failed: Invalid content type - {} for file - {}",
-                        contentType, file.getOriginalFilename());
-                result.setValid(false);
-                result.setErrorMessage("Invalid file type. Only audio files are allowed. Detected type: " + contentType);
-                return result;
-            }
-            log.info("Content type validation passed: {}", contentType);
-
-            // Try to get audio duration
-            log.info("Attempting to read audio stream for duration calculation...");
-            try {
-                // Use BufferedInputStream to support mark/reset operations
-                BufferedInputStream bufferedInputStream = new BufferedInputStream(file.getInputStream());
-
-                try (AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(bufferedInputStream)) {
-                    log.info("Audio stream opened successfully");
-
-                    long frames = audioInputStream.getFrameLength();
-                    float frameRate = audioInputStream.getFormat().getFrameRate();
-
-                    log.info("Audio format details - Frames: {}, Frame Rate: {}, Format: {}",
-                            frames, frameRate, audioInputStream.getFormat());
-
-                    if (frames == AudioSystem.NOT_SPECIFIED) {
-                        log.warn("Frame length is not specified for audio file: {}", file.getOriginalFilename());
-                        // For files where frame length is not available, we'll allow them through
-                        result.setDurationSeconds(0); // Unknown duration
-                    } else {
-                        double durationSeconds = (double) frames / frameRate;
-                        log.info("Calculated audio duration: {} seconds", durationSeconds);
-
-                        // Check duration limits (max 10 minutes)
-                        if (durationSeconds > 600) {
-                            log.error("File validation failed: Audio too long - {} seconds (max: 600 seconds)",
-                                    durationSeconds);
-                            result.setValid(false);
-                            result.setErrorMessage("Audio file too long. Maximum duration is 10 minutes.");
-                            return result;
-                        }
-
-                        if (durationSeconds < 1) {
-                            log.error("File validation failed: Audio too short - {} seconds (min: 1 second)",
-                                    durationSeconds);
-                            result.setValid(false);
-                            result.setErrorMessage("Audio file too short. Minimum duration is 1 second.");
-                            return result;
-                        }
-
-                        result.setDurationSeconds(durationSeconds);
-                        log.info("Duration validation passed: {} seconds", durationSeconds);
-                    }
-                }
-            } catch (UnsupportedAudioFileException audioEx) {
-                log.error("Audio format validation failed for file: {} - {}",
-                        file.getOriginalFilename(), audioEx.getMessage(), audioEx);
-                result.setValid(false);
-                result.setErrorMessage("Unsupported audio format. Please use common audio formats like MP3, WAV, or M4A. Error: " + audioEx.getMessage());
-                return result;
-            } catch (IOException audioIoEx) {
-                log.error("IOException while reading audio stream for file: {} - {}",
-                        file.getOriginalFilename(), audioIoEx.getMessage(), audioIoEx);
-                result.setValid(false);
-                result.setErrorMessage("Error reading audio file stream. File may be corrupted. Error: " + audioIoEx.getMessage());
-                return result;
-            }
-
-            result.setValid(true);
-            log.info("Audio file validation completed successfully for: {}", file.getOriginalFilename());
-            return result;
-
-        } catch (Exception e) {
-            log.error("Unexpected error during file validation for file: {} - {}",
-                    file.getOriginalFilename(), e.getMessage(), e);
-            result.setValid(false);
-            result.setErrorMessage("Unexpected error during file validation: " + e.getMessage());
-            return result;
-        }
-    }
-
     private int estimateProcessingTime(double durationSeconds) {
         // Rough estimate: 2-4x the audio duration for processing
         return (int) Math.ceil(durationSeconds * 3);
@@ -405,37 +309,6 @@ public class AIController {
         }
 
         return item;
-    }
-
-    private static class ValidationResult {
-
-        private boolean valid;
-        private String errorMessage;
-        private double durationSeconds;
-
-        public boolean isValid() {
-            return valid;
-        }
-
-        public void setValid(boolean valid) {
-            this.valid = valid;
-        }
-
-        public String getErrorMessage() {
-            return errorMessage;
-        }
-
-        public void setErrorMessage(String errorMessage) {
-            this.errorMessage = errorMessage;
-        }
-
-        public double getDurationSeconds() {
-            return durationSeconds;
-        }
-
-        public void setDurationSeconds(double durationSeconds) {
-            this.durationSeconds = durationSeconds;
-        }
     }
 
     @PostMapping("/generate-random-topics")
@@ -464,5 +337,100 @@ public class AIController {
         String output = aiService.generateSlowFastDrill();
         JsonNode drill = LlmUtils.extractJsonFromLlm(output);
         return ResponseEntity.ok(drill);
+    }
+
+    /**
+     * Delete analysis and all associated files
+     */
+    @DeleteMapping("/analysis/{requestId}")
+    public ResponseEntity<?> deleteAnalysis(@PathVariable String requestId) {
+        try {
+            String userId = userService.getCurrentUserId();
+            log.info("Delete analysis request for user: {}, requestId: {}", userId, requestId);
+
+            // Find the analysis request and verify ownership
+            Optional<AnalysisRequest> optionalRequest = analysisRequestRepository.findByIdAndUserId(requestId, userId);
+            if (optionalRequest.isEmpty()) {
+                log.warn("Analysis request not found or user not authorized: {}", requestId);
+                return ResponseEntity.notFound().build();
+            }
+
+            AnalysisRequest request = optionalRequest.get();
+
+            // Step 1: Delete audio from Cloudinary
+            if (request.getAudioPublicId() != null) {
+                try {
+                    cloudinaryService.deleteFile(request.getAudioPublicId(), "video"); // Audio is stored as video type
+                    log.info("Audio deleted from Cloudinary: {}", request.getAudioPublicId());
+                } catch (IOException e) {
+                    log.error("Error deleting audio from Cloudinary: {}", e.getMessage());
+                    // Continue with deletion even if audio deletion fails
+                }
+            }
+
+            // Step 2: Fetch and parse analysis result JSON to get chart URLs
+            if (request.getAnalysisResultUrl() != null) {
+                try {
+                    String analysisJson = cloudinaryService.fetchFileContent(request.getAnalysisResultUrl());
+                    JsonNode analysisNode = objectMapper.readTree(analysisJson);
+
+                    // Extract and delete chart URLs
+                    deleteChartFromAnalysis(analysisNode, "speechRate");
+                    deleteChartFromAnalysis(analysisNode, "intonation");
+
+                    log.info("Chart files deleted from analysis result");
+                } catch (Exception e) {
+                    log.error("Error processing analysis result JSON: {}", e.getMessage());
+                    // Continue with deletion even if chart deletion fails
+                }
+
+                // Step 3: Delete analysis result JSON file from Cloudinary
+                if (request.getAnalysisResultPublicId() != null) {
+                    try {
+                        cloudinaryService.deleteFile(request.getAnalysisResultPublicId(), "raw");
+                        log.info("Analysis result JSON deleted from Cloudinary: {}", request.getAnalysisResultPublicId());
+                    } catch (IOException e) {
+                        log.error("Error deleting analysis result JSON from Cloudinary: {}", e.getMessage());
+                        // Continue with deletion even if JSON deletion fails
+                    }
+                }
+            }
+
+            // Step 4: Delete the document from MongoDB
+            analysisRequestRepository.delete(request);
+            log.info("Analysis request deleted from database: {}", requestId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "Analysis deleted successfully");
+            response.put("request_id", requestId);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Error deleting analysis", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to delete analysis: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Helper method to extract and delete chart URLs from analysis JSON
+     */
+    private void deleteChartFromAnalysis(JsonNode analysisNode, String chartType) {
+        try {
+            JsonNode chartNode = analysisNode.get(chartType);
+            if (chartNode != null && chartNode.has("chartUrl")) {
+                String chartUrl = chartNode.get("chartUrl").asText();
+                if (chartUrl != null && !chartUrl.isEmpty()) {
+                    String chartPublicId = cloudinaryService.extractPublicIdFromUrl(chartUrl);
+                    if (chartPublicId != null) {
+                        cloudinaryService.deleteFile(chartPublicId, "image");
+                        log.info("Chart deleted from Cloudinary - type: {}, publicId: {}", chartType, chartPublicId);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error deleting chart for type: {}", chartType, e);
+        }
     }
 }
