@@ -3,6 +3,8 @@ package com.tranquility.SpeakSmart.service;
 import be.tarsos.dsp.AudioDispatcher;
 import be.tarsos.dsp.AudioEvent;
 import be.tarsos.dsp.AudioProcessor;
+import be.tarsos.dsp.filters.HighPass;
+import be.tarsos.dsp.filters.LowPassFS;
 import be.tarsos.dsp.io.jvm.AudioDispatcherFactory;
 import be.tarsos.dsp.pitch.PitchProcessor;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -40,7 +42,6 @@ public class SpeechAnalysisService {
     @Autowired
     private ChartGenerationService chartGenerationService;
 
-    private static final int SAMPLE_RATE = 44100;
     private static final int BUFFER_SIZE = 1024;
     private static final int OVERLAP = 512;
 
@@ -265,6 +266,10 @@ public class SpeechAnalysisService {
                 OVERLAP
         );
 
+        // 1. Filter noise
+//        dispatcher.addAudioProcessor(new HighPass(80, 44100)); // remove low hum
+//        dispatcher.addAudioProcessor(new LowPassFS(3000, 44100)); // optional: remove high hiss
+
         // Pitch detection processor
         PitchProcessor pitchProcessor = new PitchProcessor(
                 PitchProcessor.PitchEstimationAlgorithm.YIN,
@@ -352,6 +357,7 @@ public class SpeechAnalysisService {
 
                 double duration = segment.getEnd() - segment.getStart();
                 int wordCount = text.split("\\s+").length;
+                transcription.setNoOfWords(transcription.getNoOfWords() +  wordCount);
                 double wpm = ((double) wordCount / duration) * 60.0;
                 minWpm = Math.min(minWpm, wpm);
                 maxWpm = Math.max(maxWpm, wpm);
@@ -386,7 +392,8 @@ public class SpeechAnalysisService {
 
             // Calculate score and feedback
             speechRate.setCategory(calculateSpeechRateCategory(avgSpeechRate));
-            speechRate.setScore(calculateSpeechRateScore(avgSpeechRate));
+            if (transcription.getNoOfWords() > 0)
+                speechRate.setScore(calculateSpeechRateScore(avgSpeechRate));
             speechRate.setFeedback(generateSpeechRateFeedback(avgSpeechRate));
         } else
             speechRate.setAvgSpeechRate(0);
@@ -439,7 +446,8 @@ public class SpeechAnalysisService {
         // Score & feedback
         analysis.setPitchVariationScore(calculatePitchVariationScore(pitchValues, analysis.getAveragePitch(), stdDev));
         analysis.setCategory(calculateIntonationCategory(analysis.getPitchVariationScore()));
-        analysis.setScore(analysis.getPitchVariationScore());
+        if (pitchValues.length > 0)
+            analysis.setScore(analysis.getPitchVariationScore());
         analysis.setFeedback(generateIntonationFeedback(analysis.getPitchVariationScore()));
         return analysis;
     }
@@ -511,7 +519,8 @@ public class SpeechAnalysisService {
         energyAnalysis.setMaxEnergy(energyMax);
         energyAnalysis.setEnergyVariation(avgEnergy != 0 ? stdDev / avgEnergy : 0);
         energyAnalysis.setCategory(calculateEnergyCategory(avgEnergy));
-        energyAnalysis.setScore(calculateEnergyScore(avgEnergy));
+        if (!energyTimeSeries.isEmpty())
+            energyAnalysis.setScore(calculateEnergyScore(avgEnergy));
         energyAnalysis.setFeedback(generateEnergyFeedback(avgEnergy));
 
         // --- Fill PauseAnalysis ---
@@ -524,7 +533,8 @@ public class SpeechAnalysisService {
         }
         double pauseRate = totalPauses / result.getAudioMetadata().getDurationSeconds();
         pauseAnalysis.setCategory(calculatePauseCategory(pauseRate));
-        pauseAnalysis.setScore(calculatePauseScore(pauseRate));
+        if (result.getIntonation().getAveragePitch() > 0)
+            pauseAnalysis.setScore(calculatePauseScore(pauseRate));
         pauseAnalysis.setFeedback(generatePauseFeedback(pauseRate));
 
         // --- Set results ---
@@ -609,12 +619,16 @@ public class SpeechAnalysisService {
 
     private double calculateEnergyScore(double avgEnergy) {
         String category = calculateEnergyCategory(avgEnergy);
-        return switch (category) {
+
+        double rawScore = switch (category) {
             case "good" -> 70 + (avgEnergy - 0.04) * (30.0 / 0.04);
-            case "low" -> 30 + (avgEnergy - 0.02) * (40.0 / 0.02);
-            default -> Math.max(0, 70 - (avgEnergy - 0.08) * (40.0 / 0.02));
+            case "low"  -> 30 + (avgEnergy - 0.02) * (40.0 / 0.02);
+            default     -> 70 - (avgEnergy - 0.08) * (40.0 / 0.02);
         };
+
+        return Math.max(0, Math.min(100, rawScore));
     }
+
 
     private String generateEnergyFeedback(double avgEnergy) {
         String category = calculateEnergyCategory(avgEnergy);

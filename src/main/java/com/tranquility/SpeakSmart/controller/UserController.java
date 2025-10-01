@@ -43,6 +43,11 @@ public class UserController {
         }
     }
 
+    @GetMapping("/leaderboard")
+    public ResponseEntity<?> getLeaderboard() {
+        return ResponseEntity.ok(userService.getTopRankers());
+    }
+
     @GetMapping("/profile-picture")
     public ResponseEntity<?> getProfilePicture() {
         try {

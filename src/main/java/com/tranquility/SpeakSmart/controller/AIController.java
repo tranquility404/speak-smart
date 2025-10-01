@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -169,7 +170,7 @@ public class AIController {
                     response.put("message", "Analysis in progress");
                     response.put("processing_started_at", request.getProcessingStartedAt());
                     long processingTime = java.time.Duration.between(
-                            request.getProcessingStartedAt(), LocalDateTime.now()).toMillis();
+                            request.getProcessingStartedAt(), Instant.now()).toMillis();
                     response.put("processing_time_ms", processingTime);
                     break;
                 case COMPLETED:

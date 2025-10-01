@@ -1,15 +1,17 @@
 package com.tranquility.SpeakSmart.service;
 
+import com.tranquility.SpeakSmart.dto.LeaderboardDto;
 import com.tranquility.SpeakSmart.dto.UpdateUserRequest;
 import com.tranquility.SpeakSmart.dto.UserDto;
-import com.tranquility.SpeakSmart.model.LoginRequest;
-import com.tranquility.SpeakSmart.model.RegisterRequest;
-import com.tranquility.SpeakSmart.model.Roles;
-import com.tranquility.SpeakSmart.model.User;
+import com.tranquility.SpeakSmart.model.*;
+import com.tranquility.SpeakSmart.repository.AnalysisRequestRepository;
 import com.tranquility.SpeakSmart.repository.UserRepository;
 import com.tranquility.SpeakSmart.util.AuthUtils;
 import com.tranquility.SpeakSmart.util.JWTUtil;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -26,12 +28,16 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
+@Slf4j
 @Service
 public class UserService {
     private MongoTemplate mongoTemplate;
     private final UserRepository userRepository;
+    private final AnalysisRequestRepository analysisRequestRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final CustomUserDetailsService userDetailsService;
@@ -39,12 +45,14 @@ public class UserService {
     @Autowired
     private JWTUtil jwt;
 
-    public UserService(MongoTemplate mongoTemplate, UserRepository userRepository, PasswordEncoder passwordEncoder, AuthenticationManager authenticationManager, CustomUserDetailsService userDetailsService) {
+    public UserService(MongoTemplate mongoTemplate, UserRepository userRepository, AnalysisRequestRepository analysisRequestRepository,
+                       PasswordEncoder passwordEncoder, AuthenticationManager authenticationManager, CustomUserDetailsService userDetailsService) {
         this.mongoTemplate = mongoTemplate;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.userDetailsService = userDetailsService;
+        this.analysisRequestRepository = analysisRequestRepository;
     }
 
     public String registerWithGoogle(ResponseEntity<Map> userInfoResponse) {
@@ -160,6 +168,10 @@ public class UserService {
         userRepository.save(user);
     }
 
+    public List<LeaderboardDto> getTopRankers() {
+        return userRepository.findAllByOrderByPointsDescLastAnalysisDesc(PageRequest.of(0, 15));
+    }
+
     public void updateProfilePicCloudUrl(String profilePicCloudUrl) {
         Query query = new Query();
         query.addCriteria(Criteria.where("email").is(AuthUtils.getUsername()));
@@ -183,6 +195,33 @@ public class UserService {
 
     public User getUser(String email) {
         return userRepository.findByEmail(email).orElseThrow();
+    }
+
+    public User getCurrentUser() {
+        return userRepository.findByEmail(AuthUtils.getUsername()).orElseThrow();
+    }
+
+    public void updateAnalysisPoints(String userid, Instant completed) {
+        User user = userRepository.findById(userid).orElseThrow();
+        int streak = 1;
+        try {
+            long days = ChronoUnit.DAYS.between(user.getLastAnalysis(), completed);
+            if (days == 0)
+                streak = user.getStreak();
+            else if (days == 1)
+                streak = user.getStreak() + 1;
+        } catch (Exception e) {
+            log.error("First analysis: %s".formatted(e.getMessage()));
+        }
+
+        Query query = new Query(Criteria.where("_id").is(userid));
+        Update update = new Update()
+                .inc("points", 10 * streak)
+                .inc("analysisCount", 1)
+                .set("streak", streak)
+                .set("lastAnalysis", completed);
+
+        mongoTemplate.updateFirst(query, update, User.class);
     }
 
     public UserDto getCurrentUserInfo() {

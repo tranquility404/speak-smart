@@ -16,7 +16,7 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +28,9 @@ public class AsyncAudioProcessingService {
 
     @Autowired
     private AnalysisRequestRepository analysisRequestRepository;
+
+    @Autowired
+    private  UserService userService;
 
     @Autowired
     private SpeechAnalysisService audioAnalysisService;
@@ -44,7 +47,7 @@ public class AsyncAudioProcessingService {
     private final RestTemplate restTemplate = new RestTemplate();
 
     private static final int MAX_RETRIES = 3;
-    private static final int PROCESSING_TIMEOUT_MINUTES = 30;
+    private static final int PROCESSING_TIMEOUT_SECONDS = 180;  // 30 mins
 
     /**
      * Process audio analysis asynchronously
@@ -84,6 +87,7 @@ public class AsyncAudioProcessingService {
             request.setQuickResults(createQuickResults(result));
 
             analysisRequestRepository.save(request);
+            userService.updateAnalysisPoints(request.getUserId(), request.getCompletedAt());
 
             log.info("Audio processing completed successfully for request: {}", requestId);
 
@@ -262,7 +266,7 @@ public class AsyncAudioProcessingService {
      */
     @Scheduled(fixedDelay = 600000) // Every 10 minutes
     public void cleanupStuckRequests() {
-        LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(PROCESSING_TIMEOUT_MINUTES);
+        Instant cutoffTime = Instant.now().minusSeconds(PROCESSING_TIMEOUT_SECONDS);
         List<AnalysisRequest> stuckRequests = analysisRequestRepository
                 .findStuckProcessingRequests(cutoffTime);
 

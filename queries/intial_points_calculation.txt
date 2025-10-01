@@ -1,0 +1,48 @@
+db.analysis_requests.aggregate([
+  // Step 1: Group by user and date, count requests
+  {
+    $group: {
+      _id: {
+        userId: "$userId",
+        date: { $dateToString: { format: "%Y-%m-%d", date: "$completedAt" } }
+      },
+      requestCount: { $sum: 1 }
+    }
+  },
+  // Step 2: Sort by user and date
+  { $sort: { "_id.userId": 1, "_id.date": 1 } },
+  // Step 3: Group daily stats into array per user
+  {
+    $group: {
+      _id: "$_id.userId",
+      dailyStats: { $push: { date: "$_id.date", requestCount: "$requestCount" } }
+    }
+  }
+]).forEach(user => {
+  let streak = 0;
+  let lastDate = null;
+  let totalPoints = 0;
+
+  // Step 4: Calculate streak and points
+  user.dailyStats.forEach(day => {
+  const currDate = new Date(day.date);
+  if (lastDate) {
+  const diffDays = (currDate - lastDate) / (1000 * 60 * 60 * 24);
+  streak = diffDays === 1 ? streak + 1 : 1;
+} else {
+  streak = 1;
+}
+
+totalPoints += day.requestCount * 10 * streak;
+lastDate = currDate;
+});
+
+// Step 5: Update the users collection
+db.users.updateOne(
+{ _id: ObjectId(user._id) }, // convert string userId to ObjectId
+{ $set: { points: totalPoints } }
+);
+
+// Optional: print log
+print(`User ${user._id} updated with totalPoints = ${totalPoints}`);
+});

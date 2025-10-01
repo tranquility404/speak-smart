@@ -10,7 +10,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -99,21 +98,24 @@ public class AIService {
 
     public String generateRandomTopics() throws Exception {
         String systemMessage = """
-                Generate 5 random topics for a public speech. Make sure the topics cover a wide range of categories, from technology to entertainment, history to personal development, and throw in some unique and creative ideas that I wouldn't normally think of. Avoid repeating similar topics or ideas.
-                Each topic should be 4-5 words long. 
-                No preamble, only return the JSON output.
-                Output format:
-                { "topics": ["Topic 1", "Topic 2", "Topic 3", "Topic 4", "Topic 5"] }
-                """;
+                Generate 5 random public speech topics that anyone can relate to.
+                The topics should come from all kinds of categories, like everyday life, hobbies, school, history, or fun ideas.
+                Each topic should be short and simple, 4-5 words long.
+                Do not repeat similar topics.
+                Return only the JSON output in this format:
+               { "topics": ["Topic 1", "Topic 2", "Topic 3", "Topic 4", "Topic 5"] }
+               """;
         return callGroqChatAPI(systemMessage, "", "llama-3.3-70b-versatile", 1.0, 1024);
     }
 
     public String generateSpeech(String topic) throws Exception {
         String systemPrompt = """
-            Generate a speech of approximately 2 minutes in length on the topic: %s.
-            Do not include any preamble, introductions, or conclusions. 
-            Respond strictly in this JSON format:
-            { "speech": "Your generated speech here." }
+                Generate a speech of approximately 2 minutes in length on the topic: %s.
+                Write it so that it **sounds like a person is speaking to an audience**—the speaker can go high and low in pitch, show excitement, pause for effect, and express feelings naturally.
+                Keep the language simple and easy to read aloud, not like written content.
+                Do not include any preamble, introductions, or conclusions.
+                Respond strictly in this JSON format:
+                { "speech": "Your generated speech here." }
             """.formatted(topic);
         return callGroqChatAPI(systemPrompt, "", "llama-3.3-70b-versatile", 1.0, 1024);
     }

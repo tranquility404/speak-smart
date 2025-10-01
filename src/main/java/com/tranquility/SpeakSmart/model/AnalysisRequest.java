@@ -4,7 +4,7 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import lombok.Data;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Map;
 
 @Data
@@ -26,9 +26,9 @@ public class AnalysisRequest {
     private String errorMessage;
     private Integer retryCount = 0;
 
-    private LocalDateTime requestedAt;
-    private LocalDateTime processingStartedAt;
-    private LocalDateTime completedAt;
+    private Instant requestedAt;
+    private Instant processingStartedAt;
+    private Instant completedAt;
 
     // Analysis results
     private String analysisResultUrl;    // URL to JSON file in Cloudinary
@@ -44,18 +44,18 @@ public class AnalysisRequest {
     }
 
     public AnalysisRequest() {
-        this.requestedAt = LocalDateTime.now();
+        this.requestedAt = Instant.now();
         this.status = AnalysisStatus.PENDING;
     }
 
     public void markAsProcessing() {
         this.status = AnalysisStatus.PROCESSING;
-        this.processingStartedAt = LocalDateTime.now();
+        this.processingStartedAt = Instant.now();;
     }
 
     public void markAsCompleted(String analysisResultUrl, String analysisResultPublicId) {
         this.status = AnalysisStatus.COMPLETED;
-        this.completedAt = LocalDateTime.now();
+        this.completedAt = Instant.now();
         this.analysisResultUrl = analysisResultUrl;
         this.analysisResultPublicId = analysisResultPublicId;
     }
@@ -63,7 +63,7 @@ public class AnalysisRequest {
     public void markAsFailed(String errorMessage) {
         this.status = AnalysisStatus.FAILED;
         this.errorMessage = errorMessage;
-        this.completedAt = LocalDateTime.now();
+        this.completedAt = Instant.now();
     }
 
     public void incrementRetryCount() {

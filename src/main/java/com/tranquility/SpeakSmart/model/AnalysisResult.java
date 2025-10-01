@@ -63,6 +63,7 @@ public class AnalysisResult {
     public static class TranscriptionResult {
         private String fullText;
         private String language;
+        private int noOfWords;
     }
 
     @Data

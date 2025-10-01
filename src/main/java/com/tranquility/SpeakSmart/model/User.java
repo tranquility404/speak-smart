@@ -4,6 +4,7 @@ import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import java.time.Instant;
 import java.util.Set;
 
 @Document(collection = "users")
@@ -17,6 +18,10 @@ public class User {
     private String email;
     private String password;
     private Set<String> roles;
+    private int points;
+    private int analysisCount;
+    private int streak;
+    private Instant lastAnalysis;
     // Constructors, getters, and setters
 }
 
